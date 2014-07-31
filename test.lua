@@ -26,7 +26,7 @@ local tmpl = sltluv.loadstring([[<span>
 #{ if user ~= nil then }#
 <!-- an html comment -->
 <p>Hello, #{= escapeHTML(user.name) }#!</p>
-<p>Welsome to #{= user.location }#!</p>
+<p>Welcome to #{= user.location }#!</p>
 #{ else }#
 <a href="/login">login</a>
 #{ end }#
