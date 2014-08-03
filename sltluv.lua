@@ -18,6 +18,12 @@ _G.coroutine = coroutine
 
 local sltluv = {}
 
+-- save some helpers
+local replace = string.sub
+local find = string.find
+local insert = table.insert
+local concat = table.concat
+
 -- a tree fold on inclusion tree
 -- @param init_func: must return a new value when called
 local function include_fold(template, start_tag, end_tag, fold_func, init_func)
@@ -25,42 +31,42 @@ local function include_fold(template, start_tag, end_tag, fold_func, init_func)
 
 	start_tag = start_tag or '#{'
 	end_tag = end_tag or '}#'
-	local start_tag_inc = start_tag..'include:'
+	local start_tag_inc = start_tag .. 'include:'
 
-	local start1, end1 = string.find(template, start_tag_inc, 1, true)
+	local start1, end1 = find(template, start_tag_inc, 1, true)
 	local start2 = nil
 	local end2 = 0
 
 	while start1 ~= nil do
 		if start1 > end2 + 1 then -- for beginning part of file
-			result = fold_func(result, string.sub(template, end2 + 1, start1 - 1))
+			result = fold_func(result, replace(template, end2 + 1, start1 - 1))
 		end
-		start2, end2 = string.find(template, end_tag, end1 + 1, true)
-		assert(start2, 'end tag "'..end_tag..'" missing')
+		start2, end2 = find(template, end_tag, end1 + 1, true)
+		assert(start2, 'end tag "' .. end_tag .. '" missing')
 		do -- recursively include the file
-			local filename = assert(loadstring('return '..string.sub(template, end1 + 1, start2 - 1)))()
+			local filename = assert(loadstring('return ' .. replace(template, end1 + 1, start2 - 1)))()
 			assert(filename)
 			local fin = assert(io.open(filename))
 			-- TODO: detect cyclic inclusion?
 			result = fold_func(result, include_fold(fin:read('*a'), start_tag, end_tag, fold_func, init_func), filename)
 			fin:close()
 		end
-		start1, end1 = string.find(template, start_tag_inc, end2 + 1, true)
+		start1, end1 = find(template, start_tag_inc, end2 + 1, true)
 	end
-	result = fold_func(result, string.sub(template, end2 + 1))
+	result = fold_func(result, replace(template, end2 + 1))
 	return result
 end
 
 -- preprocess included files
 -- @return string
 function sltluv.precompile(template, start_tag, end_tag)
-	return table.concat(include_fold(template, start_tag, end_tag, function(acc, v)
+	return concat(include_fold(template, start_tag, end_tag, function(acc, v)
 		if type(v) == 'string' then
-			table.insert(acc, v)
+			insert(acc, v)
 		elseif type(v) == 'table' then
-			table.insert(acc, table.concat(v))
+			insert(acc, concat(v))
 		else
-			error('Unknown type: '..type(v))
+			error('Unknown type: ' .. type(v))
 		end
 		return acc
 	end, function() return {} end))
@@ -72,7 +78,7 @@ local function stable_uniq(t)
 	local res = {}
 	for _, v in ipairs(t) do
 		if not existed[v] then
-			table.insert(res, v)
+			insert(res, v)
 			existed[v] = true
 		end
 	end
@@ -85,13 +91,13 @@ function sltluv.get_dependency(template, start_tag, end_tag)
 		if type(v) == 'string' then
 		elseif type(v) == 'table' then
 			if name ~= nil then
-				table.insert(acc, name)
+				insert(acc, name)
 			end
 			for _, subname in ipairs(v) do
-				table.insert(acc, subname)
+				insert(acc, subname)
 			end
 		else
-			error('Unknown type: '..type(v))
+			error('Unknown type: ' .. type(v))
 		end
 		return acc
 	end, function() return {} end))
@@ -109,7 +115,7 @@ function sltluv.loadstring(template, start_tag, end_tag, tmpl_name)
 
 	template = sltluv.precompile(template, start_tag, end_tag)
 
-	local start1, end1 = string.find(template, start_tag, 1, true)
+	local start1, end1 = find(template, start_tag, 1, true)
 	local start2 = nil
 	local end2 = 0
 
@@ -117,24 +123,24 @@ function sltluv.loadstring(template, start_tag, end_tag, tmpl_name)
 
 	while start1 ~= nil do
 		if start1 > end2 + 1 then
-			table.insert(lua_code, output_func..'('..string.format("%q", string.sub(template, end2 + 1, start1 - 1))..')')
+			insert(lua_code, output_func .. '(' .. string.format("%q", replace(template, end2 + 1, start1 - 1)) .. ')')
 		end
-		start2, end2 = string.find(template, end_tag, end1 + 1, true)
-		assert(start2, 'end_tag "'..end_tag..'" missing')
+		start2, end2 = find(template, end_tag, end1 + 1, true)
+		assert(start2, 'end_tag "' .. end_tag .. '" missing')
 		if string.byte(template, end1 + 1) == cEqual then
-			table.insert(lua_code, output_func..'('..string.sub(template, end1 + 2, start2 - 1)..')')
+			insert(lua_code, output_func .. '(' .. replace(template, end1 + 2, start2 - 1) .. ')')
 		else
-			table.insert(lua_code, string.sub(template, end1 + 1, start2 - 1))
+			insert(lua_code, replace(template, end1 + 1, start2 - 1))
 		end
-		start1, end1 = string.find(template, start_tag, end2 + 1, true)
+		start1, end1 = find(template, start_tag, end2 + 1, true)
 	end
-	table.insert(lua_code, output_func..'('..string.format("%q", string.sub(template, end2 + 1))..')')
+	insert(lua_code, output_func .. '(' .. string.format("%q", replace(template, end2 + 1)) .. ')')
 
 	local ret = { name = tmpl_name or '=(sltluv.loadstring)' }
 	if setfenv == nil then -- lua 5.2
-		ret.code = table.concat(lua_code, '\n')
+		ret.code = concat(lua_code, '\n')
 	else -- lua 5.1
-		ret.code = assert(loadstring(table.concat(lua_code, '\n'), ret.name))
+		ret.code = assert(loadstring(concat(lua_code, '\n'), ret.name))
 	end
 	return ret
 end
@@ -176,9 +182,9 @@ function sltluv.render(t, env)
 		if not ok then
 			error(chunk)
 		end
-		table.insert(result, chunk)
+		insert(result, chunk)
 	end
-	return table.concat(result)
+	return concat(result)
 end
 
 return sltluv
